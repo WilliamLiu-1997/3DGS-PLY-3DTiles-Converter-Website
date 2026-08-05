@@ -1,8 +1,10 @@
 # 3DGS PLY to 3D Tiles Converter Website
 
+![3DGS PLY to 3D Tiles Converter](https://raw.githubusercontent.com/WilliamLiu-1997/3DGS-PLY-3DTiles-Converter/main/3DGS-PLY-3DTiles-Converter.png)
+
 Browser-only interface for converting Gaussian Splatting PLY files to 3D Tiles or simplifying them into smaller PLY files. Model data stays in the browser tab and is never uploaded.
 
-Conversion is provided by the published `3dgs-ply-3dtiles-converter/browser` API.
+Conversion is provided by the published [`3dgs-ply-3dtiles-converter/browser`](https://github.com/WilliamLiu-1997/3DGS-PLY-3DTiles-Converter) API.
 
 ## Local development
 

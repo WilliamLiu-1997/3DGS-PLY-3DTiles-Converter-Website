@@ -586,13 +586,27 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="3DGS Converter home">
-          <span className="brand-mark" aria-hidden="true">3D</span>
-          <span>
-            <strong>3DGS Converter</strong>
-            <small>Runs in your browser</small>
-          </span>
-        </a>
+        <div className="topbar-primary">
+          <a className="brand" href="#top" aria-label="3DGS Converter home">
+            <span className="brand-mark" aria-hidden="true">3D</span>
+            <span>
+              <strong>3DGS Converter</strong>
+              <small>Runs in your browser</small>
+            </span>
+          </a>
+          <a
+            className="topbar-examples"
+            href="https://3d-tiles-rendererjs-3dgs-plugin.vercel.app/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Explore converted 3D Tiles examples in a new tab"
+          >
+            <span className="examples-label-full">Explore converted 3D Tiles examples</span>
+            <span className="examples-label-medium">Converted examples</span>
+            <span className="examples-label-short">Examples</span>
+            <span className="topbar-examples-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
         <div className="privacy-badge">
           <span className="status-dot" />
           Local processing · No uploads

@@ -76,6 +76,13 @@ footer {
   border-bottom: 1px solid var(--line);
 }
 
+.topbar-primary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -110,6 +117,48 @@ footer {
   margin-top: 2px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.topbar-examples {
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.topbar-examples:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.topbar-examples:active {
+  background: #e2edff;
+}
+
+.examples-label-medium,
+.examples-label-short {
+  display: none;
+}
+
+.topbar-examples-arrow {
+  position: relative;
+  top: 1.5px;
+  left: -1.5px;
+  transition: transform 0.15s ease;
+}
+
+.topbar-examples:hover .topbar-examples-arrow {
+  transform: translate(1px, -1px);
 }
 
 .privacy-badge {
@@ -1356,6 +1405,14 @@ footer p {
 }
 
 @media (max-width: 900px) {
+  .examples-label-full {
+    display: none;
+  }
+
+  .examples-label-medium {
+    display: inline;
+  }
+
   .workspace-grid {
     grid-template-columns: 1fr;
   }
@@ -1388,6 +1445,24 @@ footer p {
 
   .topbar {
     height: 66px;
+  }
+
+  .topbar-primary {
+    gap: 12px;
+  }
+
+  .topbar-examples {
+    padding: 7px 9px;
+    gap: 5px;
+    font-size: 11px;
+  }
+
+  .examples-label-medium {
+    display: none;
+  }
+
+  .examples-label-short {
+    display: inline;
   }
 
   .privacy-badge {
@@ -1585,6 +1660,12 @@ footer p {
     flex-direction: column;
     justify-content: center;
     gap: 4px;
+  }
+}
+
+@media (max-width: 400px) {
+  .privacy-badge::after {
+    content: "";
   }
 }
 

@@ -57,7 +57,7 @@ const DEFAULTS = {
   geometricErrorLayerMultiplier: 1,
   geometricErrorScale: 1,
   colorSpace: "srgb_rec709_display",
-  extSplatOpacity: false,
+  extSplatOpacity: true,
   coordinate: "",
   transform: "",
   targetMode: "ratio",
@@ -978,7 +978,19 @@ export default function Home() {
       )}
 
       <footer>
-        <p>3DGS PLY → 3D Tiles Converter</p>
+        <div className="footer-identity">
+          <p>3DGS PLY → 3D Tiles Converter</p>
+          <p className="footer-powered">
+            Powered By{" "}
+            <a
+              href="https://github.com/WilliamLiu-1997/3DGS-PLY-3DTiles-Converter"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WilliamLiu-1997/3DGS-PLY-3DTiles-Converter
+            </a>
+          </p>
+        </div>
         <span>Model data exists only for the lifetime of this page.</span>
       </footer>
 

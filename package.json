@@ -14,13 +14,13 @@
   "dependencies": {
     "@sparkjsdev/spark": "^2.1.0",
     "3d-tiles-renderer": "^0.5.0",
-    "3d-tiles-rendererjs-3dgs-plugin": "^0.1.15",
-    "3dgs-ply-3dtiles-converter": "^0.6.1",
+    "3d-tiles-rendererjs-3dgs-plugin": "^0.1.16",
+    "3dgs-ply-3dtiles-converter": "^0.6.2",
     "fflate": "^0.8.2",
     "next": "16.3.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "three": "^0.185.0"
+    "three": "0.185.1"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",

@@ -997,11 +997,11 @@ footer {
   background: var(--panel);
 }
 
-.preview-header > div {
+.preview-header-copy {
   min-width: 0;
 }
 
-.preview-header > div > span {
+.preview-header-copy > span {
   color: var(--accent);
   font: 700 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.1em;
@@ -1013,6 +1013,18 @@ footer {
   font-size: 15px;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preview-background-toggle strong {
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1059,7 +1071,7 @@ footer {
   cursor: grabbing;
 }
 
-.preview-viewport.is-comparison {
+.preview-viewport.is-dark {
   background: #101214;
 }
 
@@ -1400,8 +1412,34 @@ footer {
 }
 
 footer p {
+  margin: 0;
   color: #4c5560;
   font-weight: 650;
+}
+
+.footer-identity {
+  display: grid;
+  gap: 5px;
+}
+
+.footer-powered {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.footer-powered a {
+  color: inherit;
+  font-weight: 550;
+  text-decoration: underline;
+  text-decoration-color: #aeb6bf;
+  text-underline-offset: 3px;
+}
+
+.footer-powered a:hover {
+  color: var(--accent-hover);
+  text-decoration-color: currentColor;
 }
 
 @media (max-width: 900px) {
@@ -1596,6 +1634,15 @@ footer p {
   .preview-header {
     min-height: 62px;
     padding: 11px 12px 11px 15px;
+    gap: 10px;
+  }
+
+  .preview-header-actions {
+    gap: 8px;
+  }
+
+  .preview-background-toggle strong {
+    display: none;
   }
 
   .preview-instructions {

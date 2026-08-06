@@ -20,6 +20,7 @@ export type PreviewAsset = {
 type PreviewRuntime = {
   dispose: () => void;
   frameContent: () => boolean;
+  setBackground: (value: number) => void;
   setLodErrorTarget: (value: number) => void;
 };
 
@@ -35,6 +36,8 @@ type PreviewDialogProps = {
 };
 
 const MEMORY_ORIGIN = "https://local-preview.invalid/";
+const LIGHT_PREVIEW_BACKGROUND = 0xf4f6f9;
+const DARK_PREVIEW_BACKGROUND = 0x101214;
 const DEFAULT_LOD_ERROR_TARGET = 16;
 const MAX_LOD_ERROR_TARGET = 64;
 const MIN_LOD_ERROR_TARGET = 4;
@@ -247,7 +250,7 @@ function preparePlyForSpark(
 function createViewport(
   THREE: typeof import("three"),
   canvas: HTMLCanvasElement,
-  background = 0xf4f6f9,
+  background = LIGHT_PREVIEW_BACKGROUND,
 ) {
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -260,7 +263,8 @@ function createViewport(
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(background);
+  const backgroundColor = new THREE.Color(background);
+  scene.background = backgroundColor;
   const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 2e8);
   camera.position.set(0, 0, 5);
 
@@ -283,6 +287,9 @@ function createViewport(
     scene,
     camera,
     resize,
+    setBackground(value: number) {
+      backgroundColor.setHex(value);
+    },
     dispose() {
       observer?.disconnect();
       window.removeEventListener("resize", resize);
@@ -295,6 +302,7 @@ async function startTilesPreview(
   canvas: HTMLCanvasElement,
   blob: Blob,
   initialLodErrorTarget: number,
+  initialBackground: number,
   callbacks: PreviewCallbacks,
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
@@ -317,7 +325,7 @@ async function startTilesPreview(
   const tilesetPath = [...entries.keys()].find((path) => /(^|\/)tileset\.json$/i.test(path));
   if (!tilesetPath) throw new Error("The generated ZIP does not contain tileset.json.");
 
-  const viewport = createViewport(THREE, canvas);
+  const viewport = createViewport(THREE, canvas, initialBackground);
   const { renderer, scene, camera } = viewport;
   const { TilesRenderer } = tilesModule;
   const { TilesFadePlugin, TileCompressionPlugin, UnloadTilesPlugin } = tilePlugins;
@@ -442,6 +450,9 @@ async function startTilesPreview(
   animationFrame = requestAnimationFrame(render);
 
   return {
+    setBackground(value) {
+      viewport.setBackground(value);
+    },
     setLodErrorTarget(value) {
       tiles.errorTarget = value;
     },
@@ -466,7 +477,7 @@ function createPlyView(
   canvas: HTMLCanvasElement,
   buffer: ArrayBuffer,
   fileName: string,
-  background = 0xf4f6f9,
+  background = LIGHT_PREVIEW_BACKGROUND,
 ) {
   const viewport = createViewport(THREE, canvas, background);
   const { renderer, scene, camera } = viewport;
@@ -525,6 +536,7 @@ async function startPlyPreview(
   canvas: HTMLCanvasElement,
   blob: Blob,
   fileName: string,
+  initialBackground: number,
   callbacks: PreviewCallbacks,
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
@@ -543,6 +555,7 @@ async function startPlyPreview(
     canvas,
     preparePlyForSpark(buffer),
     fileName,
+    initialBackground,
   );
   const { renderer, scene, camera, splat } = view;
   const { CameraController } = controllerModule;
@@ -604,6 +617,9 @@ async function startPlyPreview(
   animationFrame = requestAnimationFrame(render);
 
   return {
+    setBackground(value) {
+      view.setBackground(value);
+    },
     setLodErrorTarget() {},
     frameContent,
     dispose() {
@@ -623,6 +639,7 @@ async function startPlyComparisonPreview(
   source: NonNullable<PreviewAsset["source"]>,
   simplifiedBlob: Blob,
   simplifiedFileName: string,
+  initialBackground: number,
   callbacks: PreviewCallbacks,
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
@@ -643,7 +660,7 @@ async function startPlyComparisonPreview(
     originalCanvas,
     preparePlyForSpark(originalBuffer, source),
     source.name,
-    0x101214,
+    initialBackground,
   );
   let simplifiedView: ReturnType<typeof createPlyView>;
   try {
@@ -653,7 +670,7 @@ async function startPlyComparisonPreview(
       simplifiedCanvas,
       preparePlyForSpark(simplifiedBuffer),
       simplifiedFileName,
-      0x101214,
+      initialBackground,
     );
   } catch (error) {
     originalView.dispose();
@@ -746,6 +763,10 @@ async function startPlyComparisonPreview(
   animationFrame = requestAnimationFrame(render);
 
   return {
+    setBackground(value) {
+      originalView.setBackground(value);
+      simplifiedView.setBackground(value);
+    },
     setLodErrorTarget() {},
     frameContent,
     dispose() {
@@ -761,6 +782,7 @@ async function startPlyComparisonPreview(
 }
 
 export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
+  const isComparison = asset.mode === "simplify" && Boolean(asset.source);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalCanvasRef = useRef<HTMLCanvasElement>(null);
   const simplifiedCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -769,13 +791,14 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const runtimeRef = useRef<PreviewRuntime | null>(null);
   const lodErrorTargetRef = useRef(DEFAULT_LOD_ERROR_TARGET);
+  const backgroundRef = useRef(DARK_PREVIEW_BACKGROUND);
   const [lodPosition, setLodPosition] = useState(DEFAULT_LOD_POSITION);
+  const [darkBackground, setDarkBackground] = useState(true);
   const [comparisonPosition, setComparisonPosition] = useState(50);
   const [comparisonDragging, setComparisonDragging] = useState(false);
   const [status, setStatus] = useState("Preparing local preview…");
   const [error, setError] = useState<string | null>(null);
   const [visibleSplatCount, setVisibleSplatCount] = useState<number | null>(null);
-  const isComparison = asset.mode === "simplify" && Boolean(asset.source);
 
   const updateComparisonPosition = (clientX: number) => {
     const rect = comparisonStageRef.current?.getBoundingClientRect();
@@ -828,6 +851,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
         asset.source,
         asset.blob,
         asset.name,
+        backgroundRef.current,
         callbacks,
         signal,
       );
@@ -835,8 +859,22 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       start = asset.mode === "convert"
-        ? startTilesPreview(canvas, asset.blob, lodErrorTargetRef.current, callbacks, signal)
-        : startPlyPreview(canvas, asset.blob, asset.name, callbacks, signal);
+        ? startTilesPreview(
+            canvas,
+            asset.blob,
+            lodErrorTargetRef.current,
+            backgroundRef.current,
+            callbacks,
+            signal,
+          )
+        : startPlyPreview(
+            canvas,
+            asset.blob,
+            asset.name,
+            backgroundRef.current,
+            callbacks,
+            signal,
+          );
     }
 
     void start
@@ -844,6 +882,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
         if (signal.aborted) runtime.dispose();
         else {
           runtimeRef.current = runtime;
+          runtime.setBackground(backgroundRef.current);
           runtime.setLodErrorTarget(lodErrorTargetRef.current);
         }
       })
@@ -857,6 +896,14 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
       runtimeRef.current = null;
     };
   }, [asset, isComparison]);
+
+  useEffect(() => {
+    const background = darkBackground
+      ? DARK_PREVIEW_BACKGROUND
+      : LIGHT_PREVIEW_BACKGROUND;
+    backgroundRef.current = background;
+    runtimeRef.current?.setBackground(background);
+  }, [darkBackground]);
 
   useEffect(() => {
     const errorTarget = lodPositionToErrorTarget(lodPosition);
@@ -879,7 +926,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
         aria-labelledby="preview-title"
       >
         <header className="preview-header">
-          <div>
+          <div className="preview-header-copy">
             <span>
               {asset.mode === "convert"
                 ? "3D TILES PREVIEW"
@@ -893,12 +940,26 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
                 : asset.name}
             </h2>
           </div>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close preview">
-            Close <span aria-hidden="true">×</span>
-          </button>
+          <div className="preview-header-actions">
+            <label className="toggle preview-background-toggle">
+              <input
+                type="checkbox"
+                checked={darkBackground}
+                onChange={(event) => setDarkBackground(event.target.checked)}
+                aria-label="Use dark preview background"
+              />
+              <span aria-hidden="true" />
+              <strong>Dark background</strong>
+            </label>
+            <button ref={closeRef} type="button" onClick={onClose} aria-label="Close preview">
+              Close <span aria-hidden="true">×</span>
+            </button>
+          </div>
         </header>
 
-        <div className={`preview-viewport${isComparison ? " is-comparison" : ""}`}>
+        <div
+          className={`preview-viewport${isComparison ? " is-comparison" : ""}${darkBackground ? " is-dark" : ""}`}
+        >
           {isComparison && asset.source ? (
             <div ref={comparisonStageRef} className="preview-comparison-stage">
               <canvas

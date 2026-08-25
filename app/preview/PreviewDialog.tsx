@@ -38,6 +38,8 @@ type PreviewDialogProps = {
 const MEMORY_ORIGIN = "https://local-preview.invalid/";
 const LIGHT_PREVIEW_BACKGROUND = 0xf4f6f9;
 const DARK_PREVIEW_BACKGROUND = 0x101214;
+const TILES_PREVIEW_READY_STATUS = "3D Tiles preview ready";
+const TRANSIENT_ERROR_DURATION_MS = 3_000;
 const DEFAULT_LOD_ERROR_TARGET = 16;
 const MAX_LOD_ERROR_TARGET = 64;
 const MIN_LOD_ERROR_TARGET = 4;
@@ -423,10 +425,8 @@ async function startTilesPreview(
 
   tiles.addEventListener("load-tileset", () => {
     if (!framed && frameContent()) framed = true;
-    callbacks.onStatus("3D Tiles preview ready");
+    callbacks.onStatus(TILES_PREVIEW_READY_STATUS);
   });
-  tiles.addEventListener("tiles-load-start", () => callbacks.onStatus("Loading visible tiles…"));
-  tiles.addEventListener("tiles-load-end", () => callbacks.onStatus("3D Tiles preview ready"));
   tiles.addEventListener("load-error", (event: { error?: Error }) => {
     callbacks.onError(event.error?.message || "A tile could not be loaded from the generated ZIP.");
   });
@@ -825,13 +825,21 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
+    let errorTimeout: ReturnType<typeof setTimeout> | undefined;
 
     const callbacks: PreviewCallbacks = {
       onStatus(message) {
         if (!signal.aborted) setStatus(message);
       },
       onError(message) {
-        if (!signal.aborted) setError(message);
+        if (signal.aborted) return;
+        setError(message);
+        if (asset.mode === "convert") setStatus(TILES_PREVIEW_READY_STATUS);
+        if (errorTimeout !== undefined) clearTimeout(errorTimeout);
+        errorTimeout = setTimeout(() => {
+          if (!signal.aborted) setError(null);
+          errorTimeout = undefined;
+        }, TRANSIENT_ERROR_DURATION_MS);
       },
       onVisibleSplatCount(count) {
         if (!signal.aborted) setVisibleSplatCount(count);
@@ -892,6 +900,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
 
     return () => {
       controller.abort();
+      if (errorTimeout !== undefined) clearTimeout(errorTimeout);
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };

@@ -135,7 +135,7 @@ function createMemoryTilesPlugin(entries: Map<string, Uint8Array>) {
   };
 }
 
-function preparePlyForSpark(
+function preparePlyForGaussianSplatLite(
   buffer: ArrayBuffer,
   fallback?: {
     convention: "graphdeco" | "khr_native";
@@ -170,7 +170,7 @@ function preparePlyForSpark(
   if (convention === "graphdeco" && scaleEncoding === "log") return buffer;
   if (!/^format binary_little_endian 1\.0\r?$/m.test(header)) {
     throw new Error(
-      "Spark comparison can normalize non-default PLY conventions only for binary little-endian files.",
+      "Gaussian Splat Lite comparison can normalize non-default PLY conventions only for binary little-endian files.",
     );
   }
 
@@ -218,7 +218,7 @@ function preparePlyForSpark(
 
   const required = ["opacity", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3"];
   if (required.some((name) => !propertyOffsets.has(name))) {
-    throw new Error("The PLY is missing Gaussian properties required by Spark.");
+    throw new Error("The PLY is missing properties required by Gaussian Splat Lite.");
   }
 
   const view = new DataView(buffer);
@@ -309,12 +309,21 @@ async function startTilesPreview(
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
   callbacks.onStatus("Opening generated 3D Tiles ZIP…");
-  const [THREE, tilesModule, tilePlugins, gaussianModule, controllerModule, entries] =
+  const [
+    THREE,
+    tilesModule,
+    tilePlugins,
+    gaussianPluginModule,
+    gaussianSplatModule,
+    controllerModule,
+    entries,
+  ] =
     await Promise.all([
       import("three"),
       import("3d-tiles-renderer"),
       import("3d-tiles-renderer/plugins"),
       import("3d-tiles-rendererjs-3dgs-plugin"),
+      import("gaussian-splat-lite"),
       import("./cameraController"),
       unzipArchive(blob),
     ]);
@@ -331,7 +340,8 @@ async function startTilesPreview(
   const { renderer, scene, camera } = viewport;
   const { TilesRenderer } = tilesModule;
   const { TilesFadePlugin, TileCompressionPlugin, UnloadTilesPlugin } = tilePlugins;
-  const { GaussianSplatPlugin, getSparkRendererForScene } = gaussianModule;
+  const { GaussianSplatPlugin } = gaussianPluginModule;
+  const { GaussianSplatRenderer } = gaussianSplatModule;
   const { CameraController } = controllerModule;
 
   const rootUrl = new URL(encodeArchivePath(tilesetPath), MEMORY_ORIGIN).toString();
@@ -340,8 +350,9 @@ async function startTilesPreview(
   tiles.registerPlugin(new TilesFadePlugin());
   tiles.registerPlugin(new TileCompressionPlugin());
   tiles.registerPlugin(new UnloadTilesPlugin());
-  tiles.registerPlugin(new GaussianSplatPlugin({ renderer, scene }));
-  const sparkRenderer = getSparkRendererForScene(scene);
+  tiles.registerPlugin(new GaussianSplatPlugin());
+  const gaussianSplatRenderer = new GaussianSplatRenderer({ renderer });
+  scene.add(gaussianSplatRenderer);
   tiles.setCamera(camera);
   tiles.setResolutionFromRenderer(camera, renderer);
   tiles.errorTarget = initialLodErrorTarget;
@@ -369,7 +380,7 @@ async function startTilesPreview(
   let lastVisibleSplatCount = -1;
 
   const reportVisibleSplatCount = () => {
-    const count = Math.max(0, Math.trunc(sparkRenderer?.activeSplats ?? 0));
+    const count = Math.max(0, Math.trunc(gaussianSplatRenderer.activeSplats));
     if (count === lastVisibleSplatCount) return;
     lastVisibleSplatCount = count;
     callbacks.onVisibleSplatCount?.(count);
@@ -465,6 +476,8 @@ async function startTilesPreview(
       controls.dispose();
       scene.remove(tiles.group);
       tiles.dispose();
+      scene.remove(gaussianSplatRenderer);
+      gaussianSplatRenderer.dispose();
       viewport.dispose();
       entries.clear();
     },
@@ -473,7 +486,7 @@ async function startTilesPreview(
 
 function createPlyView(
   THREE: typeof import("three"),
-  sparkModule: typeof import("@sparkjsdev/spark"),
+  gaussianSplatModule: typeof import("gaussian-splat-lite"),
   canvas: HTMLCanvasElement,
   buffer: ArrayBuffer,
   fileName: string,
@@ -481,18 +494,14 @@ function createPlyView(
 ) {
   const viewport = createViewport(THREE, canvas, background);
   const { renderer, scene, camera } = viewport;
-  const { SparkRenderer, SplatMesh } = sparkModule;
-  // Spark's automatic update path starts async worker work without retaining
-  // the promise. Own that promise here so terminating a preview can settle the
-  // in-flight update without producing an unhandled "Worker terminate"
-  // rejection. Plain PLY previews do not use Spark's LOD worker either.
-  const spark = new SparkRenderer({
+  const { GaussianSplatRenderer, SplatMesh } = gaussianSplatModule;
+  // Own the asynchronous manual update so preview disposal cannot leave a
+  // rejected worker operation unhandled.
+  const gaussianSplatRenderer = new GaussianSplatRenderer({
     renderer,
     autoUpdate: false,
-    enableLod: false,
-    enableDriveLod: false,
   });
-  scene.add(spark);
+  scene.add(gaussianSplatRenderer);
 
   const splat = new SplatMesh({
     fileBytes: new Uint8Array(buffer),
@@ -511,7 +520,7 @@ function createPlyView(
     splat,
     update(onError: PreviewCallbacks["onError"]) {
       if (disposed || updatePromise) return;
-      updatePromise = spark
+      updatePromise = gaussianSplatRenderer
         .update({ scene, camera })
         .catch((error: unknown) => {
           if (!disposed) onError(errorMessage(error));
@@ -524,9 +533,9 @@ function createPlyView(
       if (disposed) return;
       disposed = true;
       scene.remove(splat);
-      scene.remove(spark);
+      scene.remove(gaussianSplatRenderer);
       splat.dispose();
-      spark.dispose();
+      gaussianSplatRenderer.dispose();
       viewport.dispose();
     },
   };
@@ -540,10 +549,10 @@ async function startPlyPreview(
   callbacks: PreviewCallbacks,
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
-  callbacks.onStatus("Decoding simplified PLY with Spark…");
-  const [THREE, sparkModule, controllerModule, buffer] = await Promise.all([
+  callbacks.onStatus("Decoding simplified PLY with Gaussian Splat Lite…");
+  const [THREE, gaussianSplatModule, controllerModule, buffer] = await Promise.all([
     import("three"),
-    import("@sparkjsdev/spark"),
+    import("gaussian-splat-lite"),
     import("./cameraController"),
     blob.arrayBuffer(),
   ]);
@@ -551,9 +560,9 @@ async function startPlyPreview(
 
   const view = createPlyView(
     THREE,
-    sparkModule,
+    gaussianSplatModule,
     canvas,
-    preparePlyForSpark(buffer),
+    preparePlyForGaussianSplatLite(buffer),
     fileName,
     initialBackground,
   );
@@ -579,7 +588,7 @@ async function startPlyPreview(
     const radius = Math.max(sphere.radius, 0.001);
     const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
     const distance = Math.max(radius / Math.sin(halfFov), radius * 1.75);
-    // Match Spark's viewer: the splat rotation above converts OpenCV to
+    // Match Gaussian Splat Lite's viewer: the splat rotation above converts OpenCV to
     // OpenGL, and the initial camera views the result straight from +Z.
     const viewOffset = new THREE.Vector3(0, 0, 1);
     camera.position.copy(sphere.center).addScaledVector(viewOffset, distance);
@@ -597,7 +606,7 @@ async function startPlyPreview(
       if (disposed) return;
       loaded = true;
       frameContent();
-      callbacks.onStatus("Spark PLY preview ready");
+      callbacks.onStatus("Gaussian Splat Lite PLY preview ready");
     })
     .catch((error: unknown) => {
       if (!disposed) callbacks.onError(errorMessage(error));
@@ -643,11 +652,19 @@ async function startPlyComparisonPreview(
   callbacks: PreviewCallbacks,
   signal: AbortSignal,
 ): Promise<PreviewRuntime> {
-  callbacks.onStatus("Decoding original and simplified PLY files with Spark…");
-  const [THREE, sparkModule, controllerModule, originalBuffer, simplifiedBuffer] =
+  callbacks.onStatus(
+    "Decoding original and simplified PLY files with Gaussian Splat Lite…",
+  );
+  const [
+    THREE,
+    gaussianSplatModule,
+    controllerModule,
+    originalBuffer,
+    simplifiedBuffer,
+  ] =
     await Promise.all([
       import("three"),
-      import("@sparkjsdev/spark"),
+      import("gaussian-splat-lite"),
       import("./cameraController"),
       source.blob.arrayBuffer(),
       simplifiedBlob.arrayBuffer(),
@@ -656,9 +673,9 @@ async function startPlyComparisonPreview(
 
   const originalView = createPlyView(
     THREE,
-    sparkModule,
+    gaussianSplatModule,
     originalCanvas,
-    preparePlyForSpark(originalBuffer, source),
+    preparePlyForGaussianSplatLite(originalBuffer, source),
     source.name,
     initialBackground,
   );
@@ -666,9 +683,9 @@ async function startPlyComparisonPreview(
   try {
     simplifiedView = createPlyView(
       THREE,
-      sparkModule,
+      gaussianSplatModule,
       simplifiedCanvas,
-      preparePlyForSpark(simplifiedBuffer),
+      preparePlyForGaussianSplatLite(simplifiedBuffer),
       simplifiedFileName,
       initialBackground,
     );
@@ -941,7 +958,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
                 ? "3D TILES PREVIEW"
                 : isComparison
                   ? "ORIGINAL ↔ SIMPLIFIED"
-                  : "SPARK PLY PREVIEW"}
+                  : "GAUSSIAN SPLAT LITE PLY PREVIEW"}
             </span>
             <h2 id="preview-title">
               {isComparison && asset.source
@@ -1002,53 +1019,55 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
               <div
                 className={`preview-comparison-divider${comparisonDragging ? " is-dragging" : ""}`}
                 style={{ left: `${comparisonPosition}%` }}
-                role="slider"
-                tabIndex={0}
-                aria-label="Original and simplified comparison divider"
-                aria-orientation="horizontal"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(comparisonPosition)}
-                aria-valuetext={`${Math.round(comparisonPosition)}% original, ${Math.round(100 - comparisonPosition)}% simplified`}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  setComparisonDragging(true);
-                  updateComparisonPosition(event.clientX);
-                }}
-                onPointerMove={(event) => {
-                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  updateComparisonPosition(event.clientX);
-                }}
-                onPointerUp={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                    event.currentTarget.releasePointerCapture(event.pointerId);
-                  }
-                  setComparisonDragging(false);
-                }}
-                onPointerCancel={(event) => {
-                  event.stopPropagation();
-                  setComparisonDragging(false);
-                }}
-                onLostPointerCapture={() => setComparisonDragging(false)}
-                onKeyDown={(event) => {
-                  const step = event.shiftKey ? 10 : 2;
-                  let next = comparisonPosition;
-                  if (event.key === "ArrowLeft") next -= step;
-                  else if (event.key === "ArrowRight") next += step;
-                  else if (event.key === "Home") next = 0;
-                  else if (event.key === "End") next = 100;
-                  else return;
-                  event.preventDefault();
-                  setComparisonPosition(Math.max(0, Math.min(100, next)));
-                }}
               >
-                <span className="preview-comparison-grip" aria-hidden="true" />
+                <span
+                  className="preview-comparison-grip"
+                  role="slider"
+                  tabIndex={0}
+                  aria-label="Original and simplified comparison divider"
+                  aria-orientation="horizontal"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(comparisonPosition)}
+                  aria-valuetext={`${Math.round(comparisonPosition)}% original, ${Math.round(100 - comparisonPosition)}% simplified`}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    setComparisonDragging(true);
+                    updateComparisonPosition(event.clientX);
+                  }}
+                  onPointerMove={(event) => {
+                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    updateComparisonPosition(event.clientX);
+                  }}
+                  onPointerUp={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                    }
+                    setComparisonDragging(false);
+                  }}
+                  onPointerCancel={(event) => {
+                    event.stopPropagation();
+                    setComparisonDragging(false);
+                  }}
+                  onLostPointerCapture={() => setComparisonDragging(false)}
+                  onKeyDown={(event) => {
+                    const step = event.shiftKey ? 10 : 2;
+                    let next = comparisonPosition;
+                    if (event.key === "ArrowLeft") next -= step;
+                    else if (event.key === "ArrowRight") next += step;
+                    else if (event.key === "Home") next = 0;
+                    else if (event.key === "End") next = 100;
+                    else return;
+                    event.preventDefault();
+                    setComparisonPosition(Math.max(0, Math.min(100, next)));
+                  }}
+                />
               </div>
             </div>
           ) : (
@@ -1106,7 +1125,6 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
             <aside className="inspector-notice">
               <div>
                 <strong>Need to adjust, crop, or place the tileset?</strong>
-                <span>Download it and continue in 3DTiles Inspector.</span>
               </div>
               <a
                 href="https://github.com/WilliamLiu-1997/3DTiles-Inspector"
@@ -1116,13 +1134,12 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
                 Open Inspector <span aria-hidden="true">↗</span>
               </a>
             </aside>
-          ) : (
-            <aside className="spark-notice">
-              {isComparison
-                ? "Original on the left · simplified result on the right"
-                : "Simplified PLY rendered locally with Spark and the shared CameraController."}
+          ) : !isComparison ? (
+            <aside className="splat-notice">
+              Simplified PLY rendered locally with Gaussian Splat Lite and the shared
+              CameraController.
             </aside>
-          )}
+          ) : null}
         </div>
       </section>
     </div>

@@ -65,6 +65,47 @@ function lodPositionToErrorTarget(position: number) {
   return MAX_LOD_ERROR_TARGET / 2 ** position;
 }
 
+function createOnDemandAnimationLoop(
+  renderer: import("three").WebGLRenderer,
+  onUpdate: (time: number) => void,
+  onFrame: (time: number) => void,
+  onError: PreviewCallbacks["onError"],
+) {
+  let disposed = false;
+  let renderRequested = false;
+
+  const runFrame = (time: number) => {
+    if (disposed) return;
+
+    try {
+      onUpdate(time);
+      if (!renderRequested) return;
+      renderRequested = false;
+      onFrame(time);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+
+  const requestRender = () => {
+    if (disposed || renderRequested) return false;
+    renderRequested = true;
+    return true;
+  };
+
+  renderer.setAnimationLoop(runFrame);
+
+  return {
+    requestRender,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      renderRequested = false;
+      renderer.setAnimationLoop(null);
+    },
+  };
+}
+
 function normalizeArchivePath(path: string) {
   return path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
 }
@@ -254,6 +295,7 @@ function createViewport(
   canvas: HTMLCanvasElement,
   background = LIGHT_PREVIEW_BACKGROUND,
 ) {
+  let requestRender = () => {};
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: false,
@@ -277,6 +319,7 @@ function createViewport(
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    requestRender();
   };
   resize();
 
@@ -289,8 +332,12 @@ function createViewport(
     scene,
     camera,
     resize,
+    setRequestRender(callback: () => void) {
+      requestRender = callback;
+    },
     setBackground(value: number) {
       backgroundColor.setHex(value);
+      requestRender();
     },
     dispose() {
       observer?.disconnect();
@@ -351,7 +398,11 @@ async function startTilesPreview(
   tiles.registerPlugin(new TileCompressionPlugin());
   tiles.registerPlugin(new UnloadTilesPlugin());
   tiles.registerPlugin(new GaussianSplatPlugin());
-  const gaussianSplatRenderer = new GaussianSplatRenderer({ renderer });
+  let requestRender = () => {};
+  const gaussianSplatRenderer = new GaussianSplatRenderer({
+    renderer,
+    onDirty: () => requestRender(),
+  });
   scene.add(gaussianSplatRenderer);
   tiles.setCamera(camera);
   tiles.setResolutionFromRenderer(camera, renderer);
@@ -375,7 +426,6 @@ async function startTilesPreview(
   const localUp = new THREE.Vector3();
   const worldNorth = new THREE.Vector3(0, 0, 1);
   let disposed = false;
-  let animationFrame = 0;
   let framed = false;
   let lastVisibleSplatCount = -1;
 
@@ -431,6 +481,7 @@ async function startTilesPreview(
     cameraRotation.makeBasis(cameraRight, cameraUp, cameraBack);
     camera.quaternion.setFromRotationMatrix(cameraRotation);
     camera.updateMatrixWorld();
+    requestRender();
     return true;
   };
 
@@ -442,23 +493,29 @@ async function startTilesPreview(
     callbacks.onError(event.error?.message || "A tile could not be loaded from the generated ZIP.");
   });
 
-  const resizeTiles = () => tiles.setResolutionFromRenderer(camera, renderer);
+  const resizeTiles = () => {
+    tiles.setResolutionFromRenderer(camera, renderer);
+    requestRender();
+  };
   window.addEventListener("resize", resizeTiles);
 
-  const render = (time: number) => {
-    if (disposed) return;
-    try {
-      controls.update(time);
+  const renderLoop = createOnDemandAnimationLoop(
+    renderer,
+    (time) => controls.update(time),
+    () => {
       tiles.setResolutionFromRenderer(camera, renderer);
       tiles.update();
       renderer.render(scene, camera);
       reportVisibleSplatCount();
-      animationFrame = requestAnimationFrame(render);
-    } catch (error) {
-      callbacks.onError(errorMessage(error));
-    }
-  };
-  animationFrame = requestAnimationFrame(render);
+    },
+    callbacks.onError,
+  );
+  requestRender = renderLoop.requestRender;
+  viewport.setRequestRender(requestRender);
+  controls.addEventListener("update", requestRender);
+  tiles.addEventListener("needs-render", requestRender);
+  tiles.addEventListener("needs-update", requestRender);
+  requestRender();
 
   return {
     setBackground(value) {
@@ -466,13 +523,17 @@ async function startTilesPreview(
     },
     setLodErrorTarget(value) {
       tiles.errorTarget = value;
+      requestRender();
     },
     frameContent,
     dispose() {
       if (disposed) return;
       disposed = true;
-      cancelAnimationFrame(animationFrame);
+      renderLoop.dispose();
       window.removeEventListener("resize", resizeTiles);
+      controls.removeEventListener("update", requestRender);
+      tiles.removeEventListener("needs-render", requestRender);
+      tiles.removeEventListener("needs-update", requestRender);
       controls.dispose();
       scene.remove(tiles.group);
       tiles.dispose();
@@ -491,6 +552,7 @@ function createPlyView(
   buffer: ArrayBuffer,
   fileName: string,
   background = LIGHT_PREVIEW_BACKGROUND,
+  onRenderDirty: () => void = () => {},
 ) {
   const viewport = createViewport(THREE, canvas, background);
   const { renderer, scene, camera } = viewport;
@@ -500,6 +562,7 @@ function createPlyView(
   const gaussianSplatRenderer = new GaussianSplatRenderer({
     renderer,
     autoUpdate: false,
+    onDirty: onRenderDirty,
   });
   scene.add(gaussianSplatRenderer);
 
@@ -558,6 +621,7 @@ async function startPlyPreview(
   ]);
   signal.throwIfAborted();
 
+  let requestRender = () => {};
   const view = createPlyView(
     THREE,
     gaussianSplatModule,
@@ -565,6 +629,7 @@ async function startPlyPreview(
     preparePlyForGaussianSplatLite(buffer),
     fileName,
     initialBackground,
+    () => requestRender(),
   );
   const { renderer, scene, camera, splat } = view;
   const { CameraController } = controllerModule;
@@ -576,7 +641,6 @@ async function startPlyPreview(
   const worldBox = new THREE.Box3();
   const sphere = new THREE.Sphere();
   let disposed = false;
-  let animationFrame = 0;
   let loaded = false;
 
   const frameContent = () => {
@@ -598,6 +662,7 @@ async function startPlyPreview(
     camera.lookAt(sphere.center);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    requestRender();
     return true;
   };
 
@@ -612,18 +677,19 @@ async function startPlyPreview(
       if (!disposed) callbacks.onError(errorMessage(error));
     });
 
-  const render = (time: number) => {
-    if (disposed) return;
-    try {
-      controls.update(time);
+  const renderLoop = createOnDemandAnimationLoop(
+    renderer,
+    (time) => controls.update(time),
+    () => {
       view.update(callbacks.onError);
       renderer.render(scene, camera);
-      animationFrame = requestAnimationFrame(render);
-    } catch (error) {
-      callbacks.onError(errorMessage(error));
-    }
-  };
-  animationFrame = requestAnimationFrame(render);
+    },
+    callbacks.onError,
+  );
+  requestRender = renderLoop.requestRender;
+  view.setRequestRender(requestRender);
+  controls.addEventListener("update", requestRender);
+  requestRender();
 
   return {
     setBackground(value) {
@@ -634,7 +700,8 @@ async function startPlyPreview(
     dispose() {
       if (disposed) return;
       disposed = true;
-      cancelAnimationFrame(animationFrame);
+      renderLoop.dispose();
+      controls.removeEventListener("update", requestRender);
       controls.dispose();
       view.dispose();
     },
@@ -671,6 +738,7 @@ async function startPlyComparisonPreview(
     ]);
   signal.throwIfAborted();
 
+  let requestRender = () => {};
   const originalView = createPlyView(
     THREE,
     gaussianSplatModule,
@@ -678,6 +746,7 @@ async function startPlyComparisonPreview(
     preparePlyForGaussianSplatLite(originalBuffer, source),
     source.name,
     initialBackground,
+    () => requestRender(),
   );
   let simplifiedView: ReturnType<typeof createPlyView>;
   try {
@@ -688,6 +757,7 @@ async function startPlyComparisonPreview(
       preparePlyForGaussianSplatLite(simplifiedBuffer),
       simplifiedFileName,
       initialBackground,
+      () => requestRender(),
     );
   } catch (error) {
     originalView.dispose();
@@ -714,7 +784,6 @@ async function startPlyComparisonPreview(
   const splatBox = new THREE.Box3();
   const sphere = new THREE.Sphere();
   let disposed = false;
-  let animationFrame = 0;
   let loaded = false;
 
   const syncCamera = () => {
@@ -749,6 +818,7 @@ async function startPlyComparisonPreview(
     originalView.camera.updateProjectionMatrix();
     originalView.camera.updateMatrixWorld();
     syncCamera();
+    requestRender();
     return true;
   };
 
@@ -763,21 +833,23 @@ async function startPlyComparisonPreview(
       if (!disposed) callbacks.onError(errorMessage(error));
     });
 
-  const render = (time: number) => {
-    if (disposed) return;
-    try {
-      controls.update(time);
+  const renderLoop = createOnDemandAnimationLoop(
+    originalView.renderer,
+    (time) => controls.update(time),
+    () => {
       syncCamera();
       originalView.update(callbacks.onError);
       simplifiedView.update(callbacks.onError);
       originalView.renderer.render(originalView.scene, originalView.camera);
       simplifiedView.renderer.render(simplifiedView.scene, simplifiedView.camera);
-      animationFrame = requestAnimationFrame(render);
-    } catch (error) {
-      callbacks.onError(errorMessage(error));
-    }
-  };
-  animationFrame = requestAnimationFrame(render);
+    },
+    callbacks.onError,
+  );
+  requestRender = renderLoop.requestRender;
+  originalView.setRequestRender(requestRender);
+  simplifiedView.setRequestRender(requestRender);
+  controls.addEventListener("update", requestRender);
+  requestRender();
 
   return {
     setBackground(value) {
@@ -789,7 +861,8 @@ async function startPlyComparisonPreview(
     dispose() {
       if (disposed) return;
       disposed = true;
-      cancelAnimationFrame(animationFrame);
+      renderLoop.dispose();
+      controls.removeEventListener("update", requestRender);
       mirroredPivotIndicator.removeFromParent();
       controls.dispose();
       originalView.dispose();

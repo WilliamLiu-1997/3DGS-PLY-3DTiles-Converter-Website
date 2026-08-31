@@ -1196,9 +1196,7 @@ export default function PreviewDialog({ asset, onClose }: PreviewDialogProps) {
 
           {asset.mode === "convert" ? (
             <aside className="inspector-notice">
-              <div>
-                <strong>Need to adjust, crop, or place the tileset?</strong>
-              </div>
+              <div>Need to adjust, crop, or place the tileset?</div>
               <a
                 href="https://github.com/WilliamLiu-1997/3DTiles-Inspector"
                 target="_blank"

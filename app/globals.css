@@ -1391,11 +1391,8 @@ footer {
 .inspector-notice > div {
   min-width: 0;
   flex: 1;
-}
-
-.inspector-notice strong {
-  display: block;
   font-size: 10px;
+  font-weight: 400;
 }
 
 .inspector-notice a {

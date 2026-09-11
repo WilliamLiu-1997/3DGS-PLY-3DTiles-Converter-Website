@@ -59,7 +59,6 @@ summary:focus-visible {
 }
 
 .topbar,
-.memory-banner,
 .hero,
 .workspace,
 .run-panel,
@@ -174,39 +173,6 @@ footer {
   height: 7px;
   border-radius: 50%;
   background: var(--green);
-}
-
-.memory-banner {
-  margin-top: 20px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  border: 1px solid #cbd9f2;
-  border-radius: 8px;
-  background: var(--accent-soft);
-}
-
-.memory-banner-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.memory-banner-copy strong,
-.memory-banner-copy > span {
-  display: block;
-}
-
-.memory-banner-copy strong {
-  margin-bottom: 3px;
-  color: #174ba8;
-  font-size: 12px;
-}
-
-.memory-banner-copy > span {
-  color: #3f4d61;
-  font-size: 13px;
-  line-height: 1.45;
 }
 
 .hero {
@@ -1459,7 +1425,6 @@ footer p {
 
 @media (max-width: 640px) {
   .topbar,
-  .memory-banner,
   .hero,
   .workspace,
   .run-panel,
@@ -1500,12 +1465,6 @@ footer p {
 
   .hero {
     padding: 31px 0 29px;
-  }
-
-  .memory-banner {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 9px;
   }
 
   .hero h1 {

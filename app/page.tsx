@@ -613,16 +613,6 @@ export default function Home() {
         </div>
       </header>
 
-      <aside className="memory-banner" aria-label="Browser memory limit">
-        <div className="memory-banner-copy">
-          <strong>Browser memory limit</strong>
-          <span>
-            Browser file size is limited by available memory. Large conversion
-            or simplification jobs may exceed this limit.
-          </span>
-        </div>
-      </aside>
-
       <section className="hero" id="top">
         <div className="hero-copy">
           <h1>{mode === "convert" ? "PLY to 3D Tiles" : "Simplify PLY"}</h1>

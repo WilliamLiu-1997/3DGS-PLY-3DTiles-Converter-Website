@@ -176,7 +176,7 @@ footer {
 }
 
 .hero {
-  padding: 38px 0;
+  padding: 24px 0;
 }
 
 .hero-copy {
@@ -184,7 +184,7 @@ footer {
 }
 
 .hero h1 {
-  margin: 0 0 13px;
+  margin: 0 0 8px;
   font-size: clamp(34px, 5vw, 50px);
   line-height: 1.08;
   letter-spacing: -0.045em;
@@ -1464,7 +1464,7 @@ footer p {
   }
 
   .hero {
-    padding: 31px 0 29px;
+    padding: 20px 0;
   }
 
   .hero h1 {

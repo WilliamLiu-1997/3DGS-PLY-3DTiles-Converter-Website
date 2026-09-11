@@ -613,20 +613,12 @@ export default function Home() {
         </div>
       </header>
 
-      <aside className="cli-banner" aria-label="Browser memory limit">
-        <div className="cli-banner-copy">
+      <aside className="memory-banner" aria-label="Browser memory limit">
+        <div className="memory-banner-copy">
           <strong>Browser memory limit</strong>
           <span>
-            Browser file size is limited by available memory. For large
-            conversion or simplification jobs, use the CLI tool.{" "}
-            <a
-              href="https://github.com/WilliamLiu-1997/3DGS-PLY-3DTiles-Converter"
-              target="_blank"
-              rel="noreferrer"
-              className="cli-inline-link"
-            >
-              3DGS-PLY-3DTiles-Converter ↗
-            </a>
+            Browser file size is limited by available memory. Large conversion
+            or simplification jobs may exceed this limit.
           </span>
         </div>
       </aside>
@@ -978,19 +970,7 @@ export default function Home() {
       )}
 
       <footer>
-        <div className="footer-identity">
-          <p>3DGS PLY → 3D Tiles Converter</p>
-          <p className="footer-powered">
-            Powered By{" "}
-            <a
-              href="https://github.com/WilliamLiu-1997/3DGS-PLY-3DTiles-Converter"
-              target="_blank"
-              rel="noreferrer"
-            >
-              WilliamLiu-1997/3DGS-PLY-3DTiles-Converter
-            </a>
-          </p>
-        </div>
+        <p>3DGS PLY → 3D Tiles Converter</p>
         <span>Model data exists only for the lifetime of this page.</span>
       </footer>
 
